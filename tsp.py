@@ -4,97 +4,39 @@ import math
 import random
 import itertools
 import Queue
+
 EPSILON = 1e-08
 radius = 4
 canvSize = 400
 canvBorder = 5
-# holds list of (coord, ID) tuples.  # Coord is a 2-tuple of x-y coordinates. ID is for associating the item in this
-# list with the drawn canvas circle
-locations = []
 
 isDone = False;
+# holds list of (coord, ID) tuples, where coord is a 2-tuple of x-y coordinates
+# and ID is for associating the item in this list with the drawn canvas circle
+locations = []
 
-# Pre: t1, t2 2-tuple of coordinates
-# Post: returns euclidean distance
+# dist: Takes two points as 2-tuples, t1 and t2, and returns the Euclidean
+# distance between the two points
 def dist(t1, t2):
     return math.hypot((t1[0]-t2[0]),(t1[1]-t2[1]))
 
-def restoreDone():
-    global isDone
-    if isDone:
-        isDone = False
-        calcBtn.config(text="Calculate", state=NORMAL)
-        canvas.delete("line");
-
-def keyPress(event):
-    global isDone
-    if (event.char == " ") and (not isDone): makeTour()
-    elif (event.char == "r"): reset()
-    elif (event.char == "p"): addRand()
-
-def reset():
-    global locations, isDone
-    canvas.delete(ALL)
-    locations = []
-    restoreDone()
-
-def click(event):
-    global locations, radius
-    restoreDone()
-    xy = (event.x, event.y)
-
-    # If clicked close to placed point, remove that point. Otherwise add point
-    for loc in locations:
-        if (dist(xy, loc[0]) <= radius):
-            removePoint(loc)
-            return
-    addPoint(xy)
-
-# Pre: loc in locations
-# Post: removes l from locations and removes appropriate point on canvas
-def removePoint(loc):
-    global locations
-    locations.remove(loc)
-    canvas.delete(loc[1])
-
-# Pre: coord is a 2-tuple
-# Post: adds coord to locations and draws appropriate point
-def addPoint(coord):
-    global locations, radius
-    maxLocs = 15 if (isApprox.get() == 0) else 400
-    if (len(locations) < maxLocs):
-        x0 = coord[0] - radius
-        y0 = coord[1] - radius
-        x1 = coord[0] + radius
-        y1 = coord[1] + radius
-        ID = canvas.create_oval(x0, y0, x1, y1, fill='red')
-        locations.append((coord,ID))
-
-
-def addRand():
-    global canvSize, canvBorder
-    restoreDone()
-    low = canvBorder
-    high = canvSize-1-canvBorder
-    coord = (random.randint(low, high), random.randint(low, high))
-    addPoint(coord)
-
-# returns 2d array distances between any two point in locations
+# allDistances: returns 2d array of distances between any two points in
+# locations
 def allDistances():
     return [[dist(xy1,xy2) for (xy2,I) in locations]
             for (xy1,I) in locations]
 
-# Post: Outputs a permutation of locations that represents a traveling
-#       salesman tour.
+# exactTour: Outputs a permutation of locations that represents a traveling
+# salesman tour.
+#
 # Uses dynamic programming approach. O(n^2*2^n) time complexity.
-# Implementation is heavily based off of:
-# http://www.digitalmihailo.com/
-# traveling-salesman-problem-dynamic-algorithm-implementation-in-python/
+# Implementation is based off of:
+# http://www.digitalmihailo.com/traveling-salesman-problem-dynamic-algorithm-implementation-in-python/
 def exactTour():
     global locations
     leng = len(locations)
-    if (leng <= 2):
-        return locations
+
+    if (leng <= 2): return locations
 
     distances = allDistances();
 
@@ -105,27 +47,28 @@ def exactTour():
           for (i,dist) in enumerate(distances[0][1:])}
     for k in xrange(2, leng): # k is size of subproblem (size of subset)
         dpTemp = {}
-        # for each subset of size k containing location 0...
+        # try each subset of size k containing location 0
         for S in [frozenset(A) | {0} for A in
                   itertools.combinations(xrange(1, leng), k)]:
             for j in S - {0}:
                 dpTemp[(S,j)] = min([(dp[(S-{j},p)][0] + distances[j][p],
-                                     dp[(S-{j},p)][1] + [j])
+                                      dp[(S-{j},p)][1] + [j])
                                      for p in S - {0,j}])
         dp = dpTemp
     path = min([(dp[key][0] + distances[0][key[1]], dp[key][1])
-                  for key in dp.keys()])
+                for key in dp.keys()])
     return [locations[i] for i in path[1]]
 
-# Post: Outputs a permutation of locations that represents a traveling
-#       salesman tour approximation
+# MSTTour: Outputs a permutation of locations that represents a traveling
+# salesman tour approximation
+#
 # Finds MST using Prim's algorithm and creates tour using DFS.
 # O(n^2) time complexity.
 def MSTTour():
     global locations
     leng = len(locations)
-    if (leng <= 2):
-        return locations
+
+    if (leng <= 2): return locations
 
     distances = allDistances();
 
@@ -156,13 +99,13 @@ def MSTTour():
 
     return [locations[i] for i in path]
 
+#######################
 # next few functions greedily alter segments of the tour to shorten it
 # Uses the ideas from:
 # http://nbviewer.ipython.org/url/norvig.com/ipython/TSPv3.ipynb
 
-# Try to reverse tour[i:j]. If it shortens the distance, do it and return true.
-# Otherwise don't do it, and return false
-# (This swaps two edges in our tour if successful)
+# tryReverseSegment: Try to reverse tour[i:j]. If it shortens the distance, do
+# it and return true. Otherwise don't do it, and return false
 def tryReverseSegment(tour, i, j):
     # Given tour [...,A,B,...,C,D,...], reverse B...C and examine
     # [...,A,C,...,B,D,...] is shorter.
@@ -173,7 +116,8 @@ def tryReverseSegment(tour, i, j):
         return True
     return False
 
-# return (start, end) pairs of indices that form segments of tour of length N
+# allSegments: returns (start, end) pairs of indices that form segments of tour
+# of length N
 def allSegments(N):
     return [(start, start + length)
             for length in range(N-1, 1, -1)
@@ -192,8 +136,70 @@ def alterTour(tour):
 def approxTour():
     return alterTour(MSTTour())
 
-# Pre: Takes some permutation of locations
-# Post: Draws lines between permutation in order
+#######################
+
+def keyPress(event):
+    global isDone
+    if (event.char == " ") and (not isDone): makeTour()
+    elif (event.char == "r"): reset()
+    elif (event.char == "p"): addRand()
+
+def click(event):
+    global locations, radius
+    restoreDone()
+    xy = (event.x, event.y)
+
+    # If clicked close to placed point, remove that point. Otherwise add point
+    for loc in locations:
+        if (dist(xy, loc[0]) <= radius):
+            removePoint(loc)
+            return
+    addPoint(xy)
+
+def restoreDone():
+    global isDone
+    if isDone:
+        isDone = False
+        calcBtn.config(text="Calculate", state=NORMAL)
+        canvas.delete("line");
+
+def reset():
+    global locations, isDone
+    canvas.delete(ALL)
+    locations = []
+    restoreDone()
+
+# removePoint: Removes loc from locations, and removes loc's associated drawn
+# point on canvas as well. loc must be an element in locations.
+def removePoint(loc):
+    global locations
+    locations.remove(loc)
+    canvas.delete(loc[1])
+
+# addPoint: Takes 2-tuple coord. Adds coord to locations and draws a
+# corresponding point on the canvas.
+def addPoint(coord):
+    global locations, radius
+    maxLocs = 15 if (isApprox.get() == 0) else 400
+    if (len(locations) < maxLocs):
+        x0 = coord[0] - radius
+        y0 = coord[1] - radius
+        x1 = coord[0] + radius
+        y1 = coord[1] + radius
+        ID = canvas.create_oval(x0, y0, x1, y1, fill='red')
+        locations.append((coord,ID))
+
+
+def addRand():
+    global canvSize, canvBorder
+    restoreDone()
+    low = canvBorder
+    high = canvSize-1-canvBorder
+    coord = (random.randint(low, high), random.randint(low, high))
+    addPoint(coord)
+
+# drawTour: Takes a permutation of locations, tour, and draws lines between
+# elements in tours in order.
 def drawTour(tour):
     for i in xrange(-1, len(tour)-1):
        canvas.create_line(tour[i][0][0], tour[i][0][1],
@@ -206,6 +212,12 @@ def makeTour():
     drawTour(tour);
     isDone = True;
     calcBtn.config(text="Done!")
+
+#######################
+
+# I tried putting this in a main function, but then I got a lot of errors
+# because I treat the variables defined below as global variables in the other
+# functions. I'm too lazy to fix it. Don't make bad design decisions like me.
 
 root = Tk()
 root.resizable(0,0)
